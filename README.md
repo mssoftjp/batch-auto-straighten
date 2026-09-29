@@ -16,6 +16,8 @@ Until now, leveling many photos at once in Lightroom Classic meant using Transfo
 
 Batch Auto Straighten estimates the tilt of each photo with its own analysis (not Lightroom's built-in Auto) and saves the result as the angle in **Crop & Straighten**. You can review and fine-tune any angle afterward, just as if you had set it yourself. Transform / Upright settings are not changed.
 
+In the Library Grid view, adjusted photos may show the **Photo has Develop adjustments** badge next to the crop badge. Lightroom marks changes made by a plug-in this way; only the crop and angle are changed.
+
 Photos with no clear horizon or vertical lines may still need a manual touch-up.
 
 ## Requirements
@@ -130,6 +132,8 @@ Original code and the bundled model are licensed under the [MIT License](LICENSE
 ## できること
 
 写真ごとの傾きを独自の解析で推定し（Lightroom標準の「自動」とは別の方法です）、**切り抜きと角度補正** の角度として保存します。自分で角度を設定したときと同じように、後から確認して微調整できます。「変形」（Upright）の設定は変更しません。
+
+ライブラリのグリッド表示では、切り抜きのバッジに加えて「写真が現像調整されています」のバッジが表示されることがあります。プラグインによる変更をLightroomがこのように扱うためで、変更されるのは切り抜きと角度だけです。
 
 水平線や垂直な線がはっきりしない写真では、手動での調整が必要になることがあります。
 
