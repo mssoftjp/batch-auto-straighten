@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "batch-auto-straighten"
+version = "0.18.5"
+description = "Local image-analysis runtime for the Batch Auto Straighten Lightroom Classic plug-in"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {file = "LICENSE"}
+dependencies = [
+    "numpy==2.5.2",
+    "opencv-python-headless==5.0.0.93",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1"]
+package = ["pyinstaller==6.22.2", "cmake==4.4.3", "ninja==1.13.2"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["batch_auto_straighten"]
+namespaces = false
+
+[tool.setuptools.package-data]
+batch_auto_straighten = ["models/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,54 @@
+Batch Auto Straighten original code and model are MIT-licensed. See LICENSE.
+
+dkjson 2.11
+-----------
+File: src/lightroom/dkjson.lua
+Source: https://dkolf.de/dkjson-lua/dkjson-2.11.lua
+SHA-256: 197cb50834c642f84b4cf99fe724932c50e6d9c92faec7ad89aa25e91df4d481
+License: MIT
+Copyright (C) 2010-2026 David Heiko Kolf
+
+dcraw Nikon cipher constants
+----------------------------
+Files: src/native/CameraRoll.swift (two Nikon cipher lookup tables only)
+Source: https://www.dechifro.org/dcraw/
+Copyright 1997-2018 by Dave Coffin
+License: dcraw unrestricted code; all non-Foveon code is free for all uses.
+The Foveon RESTRICTED functions are not used or included.
+
+Runtime dependencies
+--------------------
+These dependencies are not bundled in the source distribution. The macOS
+.lrplugin package includes Python, NumPy, image-only OpenCV and the PyInstaller
+bootloader. Their license texts are included in its licenses/ directory.
+OpenCV is built from unmodified 5.0.0 sources with JPEG, PNG and zlib support;
+FFmpeg and its video codec dependencies are not included.
+
+OpenCV: Apache License 2.0 — https://opencv.org/license/
+NumPy: BSD 3-Clause — https://numpy.org/doc/stable/license.html
+Python: Python Software Foundation License — https://docs.python.org/3/license.html
+PyInstaller: GPL with bootloader distribution exception — https://pyinstaller.org/en/stable/license.html
+libjpeg-turbo: IJG and BSD-style licenses. This software is based in part on
+the work of the Independent JPEG Group.
+libpng: PNG Reference Library License; zlib: zlib License.
+Intel ITT headers: BSD 3-Clause (notice included with OpenCV licenses).
+
+Python native runtime dependencies
+----------------------------------
+The bundled Python runtime may also include these native libraries:
+
+Zstandard (libzstd): BSD 3-Clause
+Source: https://github.com/facebook/zstd/tree/v1.5.7
+Notice: licenses/native-runtime/zstandard-LICENSE.txt in the plug-in package;
+licenses/zstandard-LICENSE.txt in this source repository.
+
+mpdecimal (libmpdec): BSD 2-Clause
+Source: https://www.bytereef.org/mpdecimal/
+Notice: licenses/native-runtime/mpdecimal-COPYRIGHT.txt in the plug-in package;
+licenses/mpdecimal-COPYRIGHT.txt in this source repository.
+
+These notices are copied unmodified from Zstandard 1.5.7 and mpdecimal 4.0.1.
+Review them when updating the Python runtime or its native dependencies.
+
+The development environment uses opencv-python-headless packaging (MIT):
+https://github.com/opencv/opencv-python/blob/master/LICENSE.txt

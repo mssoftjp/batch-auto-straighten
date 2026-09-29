@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Python and Lua
+    runs-on: macos-26
+    steps:
+      - name: Check out the complete public history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Build the pinned Lua 5.1 test runtime
+        env:
+          LUA_ARCHIVE_SHA256: 2640fc56a795f29d28ef15e13c34a47e223960b0240e8cb0a82d9b0738695333
+        run: |
+          curl --fail --location --output "$RUNNER_TEMP/lua-5.1.5.tar.gz" https://www.lua.org/ftp/lua-5.1.5.tar.gz
+          echo "$LUA_ARCHIVE_SHA256  $RUNNER_TEMP/lua-5.1.5.tar.gz" | shasum -a 256 --check
+          tar -xzf "$RUNNER_TEMP/lua-5.1.5.tar.gz" -C "$RUNNER_TEMP"
+          make -C "$RUNNER_TEMP/lua-5.1.5" generic
+          echo "$RUNNER_TEMP/lua-5.1.5/src" >> "$GITHUB_PATH"
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check -e '.[dev,package]'
+      - name: Check version and publication boundary
+        run: |
+          python scripts/manage-version.py --check
+          python scripts/check-publication.py
+      - name: Run Python tests
+        run: python -m pytest
+      - name: Run Lua tests
+        run: |
+          for test_file in tests/*.lua; do
+            lua "$test_file"
+          done
+
+  swift-helper:
+    name: Swift helper
+    runs-on: macos-26
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build the native helper
+        run: bash scripts/build-horizon-helper.sh

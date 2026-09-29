@@ -1,0 +1,28 @@
+# Publish source directories; keep other top-level content local.
+/*
+!/.githooks/
+!/.github/
+!/docs/
+!/licenses/
+!/scripts/
+!/src/
+!/tests/
+
+# Public files at the repository root.
+!/.gitignore
+!/CHANGELOG.md
+!/LICENSE
+!/NOTICE
+!/README.md
+!/SECURITY.md
+!/pyproject.toml
+!/setup.cfg
+
+# Generated and machine-local files inside public directories.
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/*.lrplugin/
+**/*.lrdevplugin/
+.DS_Store
+/tests/fixtures/

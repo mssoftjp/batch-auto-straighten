@@ -1,0 +1,4 @@
+#!/bin/sh
+# Validate all reachable history before any objects are sent to a remote.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+exec python3 scripts/check-publication.py
