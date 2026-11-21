@@ -9,6 +9,31 @@ local markReasons = { angle_limit=true, review_skipped=true, existing_angle=true
   no_horizon=true, reference_no_horizon=true, reference_excluded=true, angle_outside_sdk=true }
 local flagValues = {pick=1, reject=-1, clear=0}
 
+-- Name each applied mark so results show what changed, in a fixed order.
+local function describe(target)
+  local flags = {pick=LOC("$$$/BatchAutoStraighten/Text066=Pick"), reject=LOC("$$$/BatchAutoStraighten/Text067=Reject")}
+  local colors = {red=LOC("$$$/BatchAutoStraighten/Text070=Red"), yellow=LOC("$$$/BatchAutoStraighten/Text071=Yellow"),
+    green=LOC("$$$/BatchAutoStraighten/Text072=Green"), blue=LOC("$$$/BatchAutoStraighten/Text073=Blue"),
+    purple=LOC("$$$/BatchAutoStraighten/Text074=Purple")}
+  local parts = {}
+  if target.flagAction == "clear" then
+    parts[#parts+1] = LOC("$$$/BatchAutoStraighten/MarkFlagCleared=Flag cleared")
+  elseif flags[target.flagAction] then
+    parts[#parts+1] = string.format(LOC("$$$/BatchAutoStraighten/MarkFlag=Flag: %s"), flags[target.flagAction])
+  end
+  if target.colorLabelAction == "none" then
+    parts[#parts+1] = LOC("$$$/BatchAutoStraighten/MarkColorLabelCleared=Color label cleared")
+  elseif colors[target.colorLabelAction] then
+    parts[#parts+1] = string.format(LOC("$$$/BatchAutoStraighten/MarkColorLabel=Color label: %s"), colors[target.colorLabelAction])
+  end
+  if target.quickCollectionAction == "add" then
+    parts[#parts+1] = LOC("$$$/BatchAutoStraighten/MarkQuickAdded=Added to Quick Collection")
+  elseif target.quickCollectionAction == "remove" then
+    parts[#parts+1] = LOC("$$$/BatchAutoStraighten/MarkQuickRemoved=Removed from Quick Collection")
+  end
+  return table.concat(parts, LOC("$$$/BatchAutoStraighten/MarkSeparator=, "))
+end
+
 function M.new(catalog, options)
   local self = {}
   local marks = {}
@@ -72,7 +97,8 @@ function M.new(catalog, options)
             if t.colorLabelAction ~= "keep" then p:setRawMetadata("colorNameForLabel", t.colorLabelAction) end
             if t.quickCollectionAction == "add" then quickCollection:addPhotos({p})
             elseif t.quickCollectionAction == "remove" then quickCollection:removePhotos({p}) end
-            m.row.mark = LOC("$$$/BatchAutoStraighten/Text051=Marks saved")
+            -- Name the marks only after readback confirms them below.
+            m.row.mark = LOC("$$$/BatchAutoStraighten/Text053=Could not verify saved marks")
             m.written = true
           else m.row.mark = LOC("$$$/BatchAutoStraighten/Text052=Marks not set: conflicting changes") end
         end
@@ -93,6 +119,8 @@ function M.new(catalog, options)
           or (t.quickCollectionAction ~= "keep"
             and (not quickAfter or (quickAfter[p.localIdentifier] == true) ~= (t.quickCollectionAction == "add"))) then
           m.row.mark = LOC("$$$/BatchAutoStraighten/Text053=Could not verify saved marks")
+        else
+          m.row.mark = describe(t)
         end
       elseif not markOk or markErr ~= "executed" then
         m.row.mark = LOC("$$$/BatchAutoStraighten/Text050=Could not set marks: ") .. tostring(markErr)

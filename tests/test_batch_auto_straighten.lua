@@ -364,6 +364,7 @@ local function run(opts)
     end
     photo.fileName = spec.fileName or string.match(photo.path, "([^/\\]+)$") or photo.path
     function photo:getRawMetadata(key)
+      if opts.onGetRawMetadata then opts.onGetRawMetadata(self,key) end
       if key == "uuid" then
         return spec.uuid or ("p" .. tostring(self.localIdentifier))
       elseif key == "fileFormat" then
@@ -2567,7 +2568,7 @@ do
   local r = run {n=1,options={maxLeftAngle=1,maxRightAngle=1,skippedFlagAction="reject",skippedColorLabelAction="red"}}
   eq(r.photos[1].pickStatus,-1,"excluded receives reject flag")
   eq(r.photos[1].colorNameForLabel,"red","excluded receives red label")
-  ok(r.summary.details:find("目印を設定しました",1,true),"verified mark reported")
+  eq(r.report.rows[1].mark,"フラグ：除外、カラーラベル：赤","verified marks are named")
   r = run {n=1,options={maxLeftAngle=1,maxRightAngle=1,skippedColorLabelAction="yellow"},markTimeout=true}
   eq(r.photos[1].colorNameForLabel,"none","mark timeout changes nothing")
   ok(r.summary.details:find("目印を設定できませんでした",1,true),"mark timeout visible")
@@ -2793,10 +2794,25 @@ do
   eq(r.photos[2].pickStatus,-1,"skipped independent flag")
   eq(r.photos[2].colorNameForLabel,"red","skipped independent color")
   eq(r.quickMembers[r.photos[2]],nil,"skipped quick remove")
+  eq(r.report.rows[1].mark,"フラグ：採用、カラーラベル：緑、クイックコレクションに追加しました","processed marks are named")
+  eq(r.report.rows[2].mark,"フラグ：除外、カラーラベル：赤、クイックコレクションから外しました","skipped marks are named")
   ok(r.captions[1]:find("0/2",1,true),"initial progress fraction")
   ok(r.captions[#r.captions]:find("2/2",1,true),"final progress counts both dispositions")
   r=run {n=1,options={processedFlagAction="pick"},helper=function() return {degrees=0} end}
   eq(r.photos[1].pickStatus,1,"no change needed counts as processed")
+  eq(r.report.rows[1].mark,"フラグ：採用","marks left unchanged are not named")
+  r=run {language="en",photos={{path="/a/p1.JPG",fileFormat="JPEG",pickStatus=-1,colorNameForLabel="red"}},
+    options={processedFlagAction="clear",processedColorLabelAction="none",processedQuickCollectionAction="remove"},
+    quickMembers={1},helper=function() return {degrees=0} end}
+  eq(r.photos[1].pickStatus,0,"clear flag is written")
+  eq(r.photos[1].colorNameForLabel,"none","clear color label is written")
+  eq(r.quickMembers[r.photos[1]],nil,"quick remove is written")
+  eq(r.report.rows[1].mark,"Flag cleared, Color label cleared, Removed from Quick Collection","cleared marks are named")
+  -- A readback that throws must not leave the applied marks reported as verified.
+  r=run {n=1,options={processedFlagAction="pick"},helper=function() return {degrees=0} end,
+    onMark=function(p) p.marked=true end,
+    onGetRawMetadata=function(p,key) if key=="pickStatus" and p.marked then error("metadata unavailable") end end}
+  eq(r.report.rows[1].mark,"目印の保存を確認できませんでした","failed readback is not reported as named marks")
   r=run {n=1,options={processedFlagAction="pick",processedQuickCollectionAction="add"},helper=function() return {ok=false} end}
   eq(r.photos[1].pickStatus,0,"failed analysis not marked processed")
   eq(r.quickMembers[r.photos[1]],nil,"failed analysis not collected")
