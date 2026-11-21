@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "batch-auto-straighten"
-version = "0.18.5"
+version = "0.18.8"
 description = "Local image-analysis runtime for the Batch Auto Straighten Lightroom Classic plug-in"
 readme = "README.md"
 requires-python = ">=3.12"

@@ -61,7 +61,7 @@ function M.new(catalog, options)
         for _, m in ipairs(pending) do
           local p,t = m.photo,m.target
           if t.quickCollectionAction ~= "keep" and not quickCollection then
-            m.row.mark = LOC("$$$/BatchAutoStraighten/Text050=Failed to set marks: ") .. tostring(quickError)
+            m.row.mark = LOC("$$$/BatchAutoStraighten/Text050=Could not set marks: ") .. tostring(quickError)
           elseif (t.flagAction == "keep" or p:getRawMetadata("pickStatus") == m.originalFlag)
             and (t.colorLabelAction == "keep" or p:getRawMetadata("colorNameForLabel") == m.originalColorLabel)
             and (t.quickCollectionAction == "keep"
@@ -95,7 +95,7 @@ function M.new(catalog, options)
           m.row.mark = LOC("$$$/BatchAutoStraighten/Text053=Could not verify saved marks")
         end
       elseif not markOk or markErr ~= "executed" then
-        m.row.mark = LOC("$$$/BatchAutoStraighten/Text050=Failed to set marks: ") .. tostring(markErr)
+        m.row.mark = LOC("$$$/BatchAutoStraighten/Text050=Could not set marks: ") .. tostring(markErr)
       elseif not m.row.mark then m.row.mark = LOC("$$$/BatchAutoStraighten/Text054=Marks not verified") end
     end
   end

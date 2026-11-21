@@ -484,7 +484,7 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
         end)
       end
 
-      local function finish(titleExtra, fromCleanup)
+      local function finish(titleExtra)
         if finished then
           return restored
         end
@@ -549,23 +549,11 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
         diagnostics.summary=body
         diagnostics.details=details
         writeDiagnostics()
-        resultReport = {rows=ordered, stopTitle=titleExtra, maybeChanged=maybeChanged}
-        if not fromCleanup and not progress:isCanceled() then
-          -- Present results while the progress modal is still open, as
-          -- ReviewDialog does. Opening them after the modal closes races
-          -- Lightroom's asynchronous progress teardown, which can end the
-          -- results' modal session and strand a window that Done cannot close.
-          -- Cancel closes the modal immediately, so that case is deferred.
-          resultReport.shown = true
-          local shown, dialogResult = LrTasks.pcall(ResultDialog.show, ordered, titleExtra, maybeChanged)
-          if shown then
-            diagnostics.resultDialog = tostring(dialogResult)
-          else
-            resultReport.dialogErr = dialogResult
-            diagnostics.resultDialog = "error: " .. tostring(dialogResult):sub(1,1024)
-          end
-          writeDiagnostics()
-        end
+        resultReport = {rows=ordered, stopTitle=titleExtra, maybeChanged=maybeChanged,
+          diagnostics=diagnostics, writeDiagnostics=writeDiagnostics}
+        -- Results must not share a modal session with progress: Lightroom can
+        -- bring progress back in front when the app regains focus. The caller
+        -- opens results after this context exits and its UI teardown settles.
         progress:done()
         return restored
       end
@@ -584,7 +572,7 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
             end
             markRemainingJobs(loopIndex, "unprocessed")
           end
-          finish(LOC("$$$/BatchAutoStraighten/Text019=Stopped due to an error."), true)
+          finish(LOC("$$$/BatchAutoStraighten/Text019=Stopped due to an error."))
         end
       end)
 
@@ -658,7 +646,7 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
         return options.adjustedPhotoAction=="reset" and HorizonMath.isFiniteNumber(angle) and math.abs(angle)>1e-6
       end
 
-      local function isolateAndTrack(photo, i)
+      local function isolateAndTrack(photo, i, forceDevelop)
         -- Settings/metadata reads can yield after the loop's ownership check.
         if not CropControl.selectionIs(catalog, expectedActive, expectedSelected) then
           stopWith(i, "selection_changed", STOP_SELECTION, true)
@@ -677,7 +665,7 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
             stopWith(i,"not_ready",STOP_MODULE,false);return nil
           end
         end
-        if options.photoDisplayMode=="minimizeSwitching" and CropControl.currentModule()=="library" then
+        if not forceDevelop and options.photoDisplayMode=="minimizeSwitching" and CropControl.currentModule()=="library" then
           local settings=CropControl.snapshotDevelop(photo)
           local context=DirectCrop.context(photo,settings,requiresCropReset(settings.CropAngle))
           if context then
@@ -868,7 +856,7 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
         end
         if reviewError then
           fields.reviewError=reviewError
-          stopWith(i,"review_failed",LOC("$$$/BatchAutoStraighten/ReviewFailed=The review dialog could not complete. Processing stopped."),false)
+          stopWith(i,"review_failed",LOC("$$$/BatchAutoStraighten/ReviewFailed=The review could not be completed. Processing stopped."),false)
           return "stop"
         end
         if reviewAction == "stop" or progress:isCanceled() then
@@ -887,7 +875,7 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
         end
         if reviewAction ~= "apply" then
           fields.reviewError="unknown review action"
-          stopWith(i,"review_failed",LOC("$$$/BatchAutoStraighten/ReviewFailed=The review dialog could not complete. Processing stopped."),false)
+          stopWith(i,"review_failed",LOC("$$$/BatchAutoStraighten/ReviewFailed=The review could not be completed. Processing stopped."),false)
           return "stop"
         end
         fields.limitOverride = true
@@ -960,7 +948,7 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
           fields.applyErr=tostring(err);addRow(photo,"fail","apply_failed",fields)
           stopWith(i+1,"unprocessed",STOP_ERROR,false);return "stop"
         end
-        stage(LOC("$$$/BatchAutoStraighten/CheckingSave=Checking saved angle and crop"),photo)
+        stage(LOC("$$$/BatchAutoStraighten/CheckingSave=Checking saved crop and angle"),photo)
         local deadline=LrDate.currentTime()+Timing.readback
         local stableSince,previous=nil,nil
         local observed,why
@@ -1172,6 +1160,92 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
         end
       end
 
+      local function prepareSettings(photo, i, before)
+        if not HorizonMath.needsCameraWhiteBalance(before)
+          or not GroupPlan.isRawFormat(photo:getRawMetadata("fileFormat")) then return before end
+        local editTime=photo:getRawMetadata("lastEditTime")
+        local function preparationOwned()
+          if progress:isCanceled() then stopWith(i,"canceled",nil,false);return false end
+          if not CropControl.selectionIs(catalog,expectedActive,expectedSelected) then
+            stopWith(i,"selection_changed",STOP_SELECTION,true);return false
+          end
+          if CropControl.currentModule()~=expectedModule then
+            stopWith(i,"module_changed",STOP_MODULE,false);return false
+          end
+          local edited=photo:getRawMetadata("lastEditTime")
+          if editTime~=nil and edited~=editTime then
+            local check=recordSettingsCheck(before,CropControl.snapshotDevelop(photo),photo,"preparing_settings")
+            check.editTimeBefore,check.editTimeAfter=editTime,edited
+            stopWith(i,"settings_changed",STOP_SETTINGS,false);return false
+          end
+          return true
+        end
+        if not preparationOwned() then return nil,"stop" end
+        if expectedModule~="library" then
+          LrApplicationView.switchToModule("library");expectedModule="library"
+          CropControl.waitUntil(Timing.library,function()
+            return progress:isCanceled() or CropControl.currentModule()=="library"
+          end)
+        end
+        if not preparationOwned() then return nil,"stop" end
+        stage(LOC("$$$/BatchAutoStraighten/PreparingSettings=Preparing Develop settings"),photo)
+        -- Warm-up only. Analysis always requests a fresh preview after the
+        -- complete settings snapshot below has become the guarded baseline.
+        local preview=requestPreview(photo,LrPathUtils.child(workDir,photoId(photo)..".jpg"))
+        waitFor({preview},PREVIEW_TIMEOUT,function()updateProgress(#rows);return preparationOwned()end)
+        if not preparationOwned() then return nil,"stop" end
+        if not preview.ok then
+          addRow(photo,"fail","no_preview",{detail=preview.detail,callbackErr=preview.callbackErr})
+          return nil,"continue"
+        end
+        local function awaitSettings(timeout)
+          local deadline=LrDate.currentTime()+timeout
+          local previous,stableSince
+          while LrDate.currentTime()<deadline do
+            if not preparationOwned() then return nil,"stop" end
+            local current=CropControl.snapshotDevelop(photo)
+            if not preparationOwned() then return nil,"stop" end
+            if not HorizonMath.sameDuringCameraInitialization(before,current) then
+              recordSettingsCheck(before,current,photo,"preparing_settings")
+              stopWith(i,"settings_changed",STOP_SETTINGS,false);return nil,"stop"
+            end
+            if not HorizonMath.needsCameraWhiteBalance(current) then
+              if previous and HorizonMath.tablesEqual(previous,current) then
+                if LrDate.currentTime()-stableSince>=Timing.stable then return current end
+              else stableSince=LrDate.currentTime() end
+              previous=current
+            else previous,stableSince=nil,nil end
+            LrTasks.sleep(0.05)
+          end
+          return nil,"not_ready"
+        end
+        local ready,state=awaitSettings(1)
+        if not ready and state=="not_ready" then
+          -- Cached thumbnails do not always materialize RAW white balance.
+          -- Loading this one photo in Develop is read-only; never poke a
+          -- slider or reset settings just to force Lightroom to initialize.
+          local isoOk,isoResult=isolateAndTrack(photo,i,true)
+          state=afterIsolate(photo,i,isoOk,isoResult)
+          if state~="ready" then return nil,state=="fail" and "continue" or state end
+          local entered=CropControl.enterDevelop(catalog,photo)
+          expectedModule="develop"
+          if not preparationOwned() then return nil,"stop" end
+          if entered then ready,state=awaitSettings(Timing.develop) end
+          if state=="stop" then return nil,state end
+          isoOk,isoResult=isolateAndTrack(photo,i)
+          local restoredState=afterIsolate(photo,i,isoOk,isoResult)
+          if restoredState~="ready" then return nil,restoredState=="fail" and "continue" or restoredState end
+          diagnostics.preparedViaDevelop=(diagnostics.preparedViaDevelop or 0)+1
+        end
+        if not ready then
+          if state=="stop" then return nil,state end
+          addRow(photo,"fail","settings_not_ready");return nil,"continue"
+        end
+        if not preparationOwned() then return nil,"stop" end
+        diagnostics.preparedSettings=(diagnostics.preparedSettings or 0)+1
+        return ready
+      end
+
       local function processEstimated(photo, i, settingsBefore, wantShare)
         local share = wantShare and makeShareFail(photo, "reference_failed") or nil
         local id = photoId(photo)
@@ -1213,6 +1287,9 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
         if settingsBefore == nil then
           settingsBefore = directSettings or CropControl.snapshotDevelop(photo)
         end
+        local prepared,prepareState=prepareSettings(photo,i,settingsBefore)
+        if not prepared then return prepareState,share end
+        settingsBefore=prepared
         if not settingsUnchanged(settingsBefore, photo, "before_tilt_analysis") then
           stopWith(i, "settings_changed", STOP_SETTINGS, false)
           return "stop", share
@@ -1456,7 +1533,10 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
           })
           return "continue"
         end
-        if settingsBefore and not settingsUnchanged(settingsBefore, photo, "follower_before_isolation") then
+        local prepared,prepareState=prepareSettings(photo,i,settingsBefore or CropControl.snapshotDevelop(photo))
+        if not prepared then return prepareState end
+        settingsBefore=prepared
+        if not settingsUnchanged(settingsBefore, photo, "follower_before_isolation") then
           stopWith(i, "settings_changed", STOP_SETTINGS, false)
           return "stop"
         end
@@ -1640,16 +1720,17 @@ LrFunctionContext.postAsyncTaskWithContext("BatchAutoStraightenRun", function(ta
       LrTasks.sleep(0.5)
     end
   end
-  if resultReport and resultReport.dialogErr and bodyOk then
-    bodyOk, bodyErr = false, resultReport.dialogErr
-  elseif resultReport and not resultReport.shown then
-    -- Cancel and the cleanup-handler path: results cannot nest inside a
-    -- progress modal that is already closing.
-    local dialogOk, dialogErr = LrTasks.pcall(function()
+  if resultReport then
+    -- Completion, cancellation and cleanup all use the same single handoff.
+    -- Keep the run lock until results close, including this teardown wait.
+    local dialogOk, dialogResult = LrTasks.pcall(function()
       afterProgressTeardown()
-      ResultDialog.show(resultReport.rows, resultReport.stopTitle, resultReport.maybeChanged)
+      return ResultDialog.show(resultReport.rows, resultReport.stopTitle, resultReport.maybeChanged)
     end)
-    if not dialogOk and bodyOk then bodyOk, bodyErr = dialogOk, dialogErr end
+    resultReport.diagnostics.resultDialog = dialogOk and tostring(dialogResult)
+      or ("error: " .. tostring(dialogResult):sub(1,1024))
+    resultReport.writeDiagnostics()
+    if not dialogOk and bodyOk then bodyOk, bodyErr = false, dialogResult end
   end
   if not bodyOk then
     -- Keep the lock through the wait so another run cannot open its dialogs

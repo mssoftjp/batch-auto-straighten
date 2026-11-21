@@ -2,6 +2,22 @@
 
 This project follows [Semantic Versioning](https://semver.org/). User-visible changes are recorded here before a version tag is created.
 
+## 0.18.8 - Unreleased
+
+- Restore aligned Photo, Result, Angle, Method and Details columns in the results table, keeping all photos in one scroll area.
+- Remove the separate selected-photo details panel so each explanation stays with its photo.
+
+## 0.18.7 - Unreleased
+
+- Close the progress dialog before showing results so it cannot cover the completed report.
+- Replace result pages with one native scrolling list containing every photo and details for the selected entry.
+
+## 0.18.6 - Unreleased
+
+- Prepare incomplete RAW white-balance settings before analysis so Lightroom's deferred initialization does not stop the batch.
+- Ignore empty filter and profile defaults while continuing to detect actual Develop edits.
+- Display large result sets in pages of 50 photos.
+
 ## 0.18.5 - 2026-09-30
 
 Initial public release.

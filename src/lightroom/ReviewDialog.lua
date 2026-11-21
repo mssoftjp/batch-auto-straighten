@@ -44,12 +44,12 @@ return function(filename, photo, previewPath, target, limit, options)
       },
       f:push_button {
         title = LOC("$$$/BatchAutoStraighten/ReviewApplyRemaining=Apply All Remaining"),
-        tooltip = LOC("$$$/BatchAutoStraighten/ReviewApplyRemainingTip=Apply this correction and all remaining over-limit corrections in this run without asking again. Corrections within the limits continue normally."),
+        tooltip = LOC("$$$/BatchAutoStraighten/ReviewApplyRemainingTip=Apply this correction and all remaining over-limit corrections in this batch without asking again. Corrections within the limits continue normally."),
         action = function(button) choose(button, "apply_all_remaining") end,
       },
       f:push_button {
         title = LOC("$$$/BatchAutoStraighten/ReviewSkipRemaining=Skip All Remaining"),
-        tooltip = LOC("$$$/BatchAutoStraighten/ReviewSkipRemainingTip=Skip this correction and all remaining over-limit corrections in this run without asking again. Corrections within the limits continue normally."),
+        tooltip = LOC("$$$/BatchAutoStraighten/ReviewSkipRemainingTip=Skip this correction and all remaining over-limit corrections in this batch without asking again. Corrections within the limits continue normally."),
         action = function(button) choose(button, "skip_all_remaining") end,
       },
       f:spacer { fill_horizontal = 1 },

@@ -141,8 +141,8 @@ end
 
 HorizonMath.tablesEqual = tablesEqual
 
--- Develop materializes empty AILook defaults both here and in Look.Parameters,
--- and refreshes Look.Parameters.Version (the Camera Raw writer version).
+-- Rendering materializes empty defaults and refreshes Look.Parameters.Version
+-- (the Camera Raw writer version), including after a Develop settings reset.
 -- This is not ProcessVersion: the rendering process, profile identity, amount,
 -- curves and nonempty AI settings must all remain guarded. Never alter the
 -- SDK's settings table or recursively ignore similarly named custom fields.
@@ -152,19 +152,50 @@ function HorizonMath.normalizeDevelopSettings(settings)
     local out={};for k,v in pairs(value) do out[k]=v end;return out
   end
   local normalized=settings
-  if empty(settings.AILook) then
-    normalized=copy(settings);normalized.AILook=nil
+  for _,key in ipairs({"AILook","FilterList"}) do
+    if empty(settings[key]) then
+      if normalized==settings then normalized=copy(settings) end
+      normalized[key]=nil
+    end
   end
   local look=settings.Look
   local parameters=type(look)=="table" and look.Parameters
-  if type(parameters)=="table" and (empty(parameters.AILook) or type(parameters.Version)=="string") then
+  if type(parameters)=="table" and (empty(parameters.AILook) or empty(parameters.PointColors)
+    or type(parameters.Version)=="string") then
     if normalized==settings then normalized=copy(settings) end
     normalized.Look=copy(look)
     normalized.Look.Parameters=copy(parameters)
     if empty(parameters.AILook) then normalized.Look.Parameters.AILook=nil end
+    if empty(parameters.PointColors) then normalized.Look.Parameters.PointColors=nil end
     if type(parameters.Version)=="string" then normalized.Look.Parameters.Version=nil end
   end
   return normalized
+end
+
+local function pendingWhiteBalance(value)
+  return value==nil or value==-999999
+end
+function HorizonMath.needsCameraWhiteBalance(settings)
+  return settings.WhiteBalance=="As Shot"
+    and (pendingWhiteBalance(settings.Temperature) or pendingWhiteBalance(settings.Tint))
+end
+
+-- Only the preparation phase may fill previously unavailable As Shot values.
+-- Never use this comparison after analysis or while verifying a crop save.
+function HorizonMath.sameDuringCameraInitialization(before, after)
+  if not HorizonMath.needsCameraWhiteBalance(before) or after.WhiteBalance~="As Shot" then
+    return tablesEqual(before,after)
+  end
+  local expected={};for k,v in pairs(before) do expected[k]=v end
+  for _,key in ipairs({"Temperature","Tint"}) do
+    if pendingWhiteBalance(before[key]) then
+      local value=after[key]
+      if not pendingWhiteBalance(value) and not HorizonMath.isFiniteNumber(value) then return false end
+      if key=="Temperature" and not pendingWhiteBalance(value) and value<=0 then return false end
+      expected[key]=value
+    end
+  end
+  return tablesEqual(expected,after)
 end
 
 -- These are the only settings Lightroom may update as a consequence of our

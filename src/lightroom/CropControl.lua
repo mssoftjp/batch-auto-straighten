@@ -100,6 +100,17 @@ function M.isolateInLibrary(catalog, photo, priorActive, priorSelected, onSelect
   end)
 end
 
+-- Load the isolated photo in Develop for a read-only settings check. Unlike
+-- enterDevelopCrop, this waits for neither Straighten nor the Crop tool.
+function M.enterDevelop(catalog, photo)
+  if M.currentModule() ~= "develop" then
+    LrApplicationView.switchToModule("develop")
+  end
+  return M.waitUntil(Timing.develop, function()
+    return developOwned(catalog, photo)
+  end)
+end
+
 function M.enterDevelopCrop(catalog, photo)
   if M.currentModule() ~= "develop" then
     LrApplicationView.switchToModule("develop")

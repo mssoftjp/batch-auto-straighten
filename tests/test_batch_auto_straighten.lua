@@ -255,7 +255,6 @@ local function collectText(node, acc)
   if type(node.title) == "string" then
     acc[#acc + 1] = node.title
   end
-  if node.items then collectText(node.items, acc) end
   for i = 1, #node do
     collectText(node[i], acc)
   end
@@ -601,7 +600,7 @@ local function run(opts)
         if moduleName ~= "develop" then
           error("selectTool before Develop loaded")
         end
-        tool = name
+        if not (opts.noCropTool and name == "crop") then tool = name end
       end,
       getSelectedTool = function()
         return tool
@@ -985,15 +984,10 @@ local function run(opts)
         -- Keep behavioral assertions on the complete report data, independently
         -- of the compact user-facing table. The production path writes this
         -- detail to its local diagnostic record before opening the dialog.
-        if result.progressVisible then
-          -- Results nest inside the live progress modal, like ReviewDialog.
-          eq(progressDone, false, "results open before progress is done")
-          result.resultNested = true
-        else
-          -- Cancel or cleanup-handler path: the modal is already closing.
-          eq(result.progressInfo.functionContext.completed, true, "deferred results open after progress scope")
-          eq(result.teardownWaited, true, "deferred results wait for progress teardown")
-        end
+        eq(result.progressVisible, false, "results never overlap a visible progress modal")
+        eq(progressDone, true, "progress is done before results open")
+        eq(result.progressInfo.functionContext.completed, true, "results open after progress scope")
+        eq(result.teardownWaited, true, "results wait for progress teardown")
         result.resultDialogs = (result.resultDialogs or 0) + 1
         if opts.resultDialogError then error("test result dialog failure") end
         local codec=realDofile(plugin .. "/dkjson.lua")
@@ -1601,20 +1595,20 @@ do
   })
   eq(prefs.runOptions.sameNameMode, "matchRendered", "same-name mode persisted on ok")
   ok(r.summary ~= nil and string.find(r.summary.body, "JPEG/HEIFに合わせる", 1, true) ~= nil, "result shows mode")
-  ok(r.resultInfo ~= nil and viewHasType(r.resultInfo.contents, "scrolled_view"), "result uses scrolled_view")
+  ok(r.resultInfo ~= nil and viewHasType(r.resultInfo.contents, "scrolled_view"), "result uses a scrolling table")
   local contents = r.resultInfo and r.resultInfo.contents
   ok(contents ~= nil and contents[1] ~= nil and contents[1]._type == "static_text", "result summary is static_text")
-  ok(contents ~= nil and contents[#contents] ~= nil and contents[#contents]._type == "scrolled_view", "result details are scrolled_view")
+  local list
+  for _,view in ipairs(contents or {}) do if view._type=="scrolled_view" then list=view end end
+  ok(list~=nil,"result has a scrolling table")
   local summaryTitle = contents and contents[1] and contents[1].title or ""
   local scrollTitles = {}
-  if contents and contents[#contents] then
-    collectText(contents[#contents], scrollTitles)
-  end
+  if list then collectText(list, scrollTitles) end
   local details = table.concat(scrollTitles, "\n")
   ok(string.find(summaryTitle, "fake.jpg", 1, true) == nil, "summary static_text does not list filename")
-  ok(string.find(details, "fake.jpg", 1, true) ~= nil, "scrolled_view lists filename")
+  ok(string.find(details, "fake.jpg", 1, true) ~= nil, "table includes filename")
   ok(string.find(summaryTitle, "前=", 1, true) == nil, "summary static_text does not duplicate row details")
-  ok(string.find(details, "傾きの解析を実行できませんでした", 1, true) ~= nil, "scrolled_view explains failure")
+  ok(string.find(details, "傾きの解析を実行できませんでした", 1, true) ~= nil, "table explains failure")
 end
 
 -- Individual mode: same-stem JPG/RAW keep different estimates.
@@ -2573,10 +2567,10 @@ do
   local r = run {n=1,options={maxLeftAngle=1,maxRightAngle=1,skippedFlagAction="reject",skippedColorLabelAction="red"}}
   eq(r.photos[1].pickStatus,-1,"excluded receives reject flag")
   eq(r.photos[1].colorNameForLabel,"red","excluded receives red label")
-  ok(r.summary.details:find("目印設定済み",1,true),"verified mark reported")
+  ok(r.summary.details:find("目印を設定しました",1,true),"verified mark reported")
   r = run {n=1,options={maxLeftAngle=1,maxRightAngle=1,skippedColorLabelAction="yellow"},markTimeout=true}
   eq(r.photos[1].colorNameForLabel,"none","mark timeout changes nothing")
-  ok(r.summary.details:find("目印設定失敗",1,true),"mark timeout visible")
+  ok(r.summary.details:find("目印を設定できませんでした",1,true),"mark timeout visible")
   r = run {n=1,options={skippedColorLabelAction="red"},helper=function() return {ok=false} end}
   eq(r.photos[1].colorNameForLabel,"none","helper failure not marked")
   r = run {n=1,canceledAt=0,options={skippedColorLabelAction="red"}}
@@ -2764,7 +2758,7 @@ for _,language in ipairs({"ja","en"}) do
     eq(reference[1],case.name,"reference photo column is filename only")
     eq(reference[4],language=="ja" and "画像解析" or "Image analysis","reference retains estimation method")
     eq(follower[1],case.follower,"follower photo column is filename only")
-    eq(follower[4],language=="ja" and case.format.."の設定に同期" or "Synced to "..case.format.." settings","method identifies actual reference format")
+    eq(follower[4],language=="ja" and case.format.."と同じ角度" or "Matched to "..case.format.." angle","method identifies actual reference format")
     eq(follower[5],(language=="ja" and "基準：" or "Reference: ")..case.name,"details identify reference filename")
   end
 end
@@ -2808,15 +2802,15 @@ do
   eq(r.quickMembers[r.photos[1]],nil,"failed analysis not collected")
   r=run {n=1,options={processedQuickCollectionAction="add"},quickName="some other collection"}
   eq(r.quickMembers[r.photos[1]],nil,"unrecognized collection never mutated")
-  ok(r.summary.details:find("目印設定失敗",1,true),"collection lookup failure visible")
+  ok(r.summary.details:find("目印を設定できませんでした",1,true),"collection lookup failure visible")
   r=run {n=1,options={processedQuickCollectionAction="add"},quickWriteFails=true}
-  ok(r.summary.details:find("目印の保存を確認できず",1,true),"collection persistence checked")
+  ok(r.summary.details:find("目印の保存を確認できませんでした",1,true),"collection persistence checked")
   local reads=0
   r=run {n=1,options={processedQuickCollectionAction="add",processedFlagAction="pick"},onQuickRead=function(m,ps)
     reads=reads+1;if reads==2 then m[ps[1]]=true end
   end}
   eq(r.photos[1].pickStatus,0,"concurrent membership change preserves other marks")
-  ok(r.summary.details:find("目印は変更競合",1,true),"collection conflict reported")
+  ok(r.summary.details:find("変更が競合したため、目印を設定しませんでした",1,true),"collection conflict reported")
   r=run {n=2,canceledAt=1,options={processedFlagAction="pick",processedQuickCollectionAction="add"}}
   eq(r.photos[1].pickStatus,1,"cancel retains completed photo flag")
   eq(r.quickMembers[r.photos[1]],true,"cancel retains completed photo collection membership")
@@ -2901,7 +2895,7 @@ do
   eq(r.setValues[1].value,2.5,"reference uses camera roll")
   eq(r.setValues[2].value,2.5,"follower shares final UI not its own roll")
   labels={}; collectText(r.resultInfo.contents,labels)
-  ok(table.concat(labels,"\n"):find("RAWの設定に同期",1,true),"follower names synchronization regardless of reference estimation method")
+  ok(table.concat(labels,"\n"):find("RAWと同じ角度",1,true),"follower names synchronization regardless of reference estimation method")
 
   r=run {n=1,startAngle=0,options={tiltSource="inCameraData",adjustedPhotoAction="skip"},
     helper=function() return {roll_only=true,roll_degrees=0.11103270596310168,make="Apple"} end}
@@ -3050,8 +3044,7 @@ do
   for _,caption in ipairs(r.captions) do ok(not caption:find("秒",1,true),"progress omits elapsed seconds") end
   local main=r.resultInfo.contents
   eq(main[1].title,"処理が完了しました","normal completion remains complete")
-  local row=main[#main][1][1]
-  eq(row[5].title,"","successful row omits repeated applied reason")
+  eq(main[#main][1][1][5].title,"","successful row omits repeated applied reason")
 end
 
 -- Calculation/review never opens a save checkpoint. Cancellation is a latch
@@ -3374,14 +3367,15 @@ do
   eq(r.running,false,"cleanup eventually releases lock")
 end
 
--- Results nest inside the live progress modal; opening them after the scope
--- exits races Lightroom's asynchronous teardown and can strand the window.
+-- Results open only after progress has closed and its asynchronous teardown
+-- has settled, so reactivating Lightroom cannot bring progress in front.
 do
   local r=run{n=2,helper=function() return {ok=true,kind="horizon",degrees=3} end}
   eq(r.resultDialogs,1,"results shown once")
-  eq(r.resultNested,true,"results nest inside progress scope")
-  eq(r.progressDone,true,"progress done after results")
-  eq(r.running,false,"nested results release lock")
+  eq(r.progressVisible,false,"progress remains closed while results are displayed")
+  eq(r.progressDone,true,"progress done before results")
+  eq(r.teardownWaited,true,"normal completion waits for progress teardown")
+  eq(r.running,false,"results release lock")
   local codec=realDofile(plugin .. "/dkjson.lua")
   local diagnostic=assert(codec.decode(r.diagnostics))
   eq(diagnostic.resultDialog,"ok","diagnostics record result dialog outcome")
@@ -3448,8 +3442,100 @@ end
 do
   local r=run{n=2,restoreSelectionError=true,options={photoDisplayMode="openEachPhoto"},
     helper=function() return {ok=true,kind="horizon",degrees=3} end}
-  ok(r.report.title and (r.report.title:find("後処理",1,true) or r.report.title:find("finalized",1,true)),"finishing failure is shown in results")
+  ok(r.report.title and (r.report.title:find("更新を完了できませんでした",1,true) or r.report.title:find("finalized",1,true)),"finishing failure is shown in results")
   eq(r.checkpoint.record==nil or r.checkpoint.record.state~="complete",true,"finishing failure still clears completed checkpoint")
+end
+
+-- A reset RAW may not expose its As Shot WB until its preview is rendered.
+-- Establish the analysis baseline after that initialization, while retaining
+-- the original guard for every already-known setting and for actual edits.
+for _,case in ipairs({"wb", "sentinel", "partial", "filter", "point_colors", "combined",
+    "exposure", "profile", "active_filter", "active_point_colors", "custom_wb", "edit_time",
+    "known_wb", "cancel", "selection", "module"}) do
+  local function settings()
+    return {Exposure2012=0,Contrast2012=0,CropAngle=0,WhiteBalance="As Shot",
+      Look={Name="Adobe Color",UUID="profile-a",Amount=1,Parameters={Version="18.5.1",ProcessVersion="15.4"}}}
+  end
+  local cold=settings()
+  if case=="sentinel" then cold.Temperature=-999999;cold.Tint=-999999 end
+  if case=="partial" then cold.Tint=44 end
+  if case=="filter" or case=="point_colors" or case=="known_wb" then cold.Temperature=4400;cold.Tint=44 end
+  local warmed=false
+  local r=run{sameNameMode="matchRaw",module="library",direct=true,
+    options={photoDisplayMode="minimizeSwitching",adjustedPhotoAction="reset",tiltSource="imageAnalysis"},
+    photos={
+      {path="/dir/A.ARW",fileFormat="RAW",settings={Exposure2012=0,CropAngle=0}},
+      {path="/dir/A.JPG",fileFormat="JPEG",settings={Exposure2012=0,CropAngle=0}},
+      {path="/dir/B.ARW",fileFormat="RAW",settings=cold},
+      {path="/dir/B.JPG",fileFormat="JPEG",settings={Exposure2012=0,CropAngle=0}},
+    },
+    helper=function()return {kind="horizon",degrees=.37}end,
+    onGetDevelopSettings=function(p)if p.lastEditTime==nil then p.lastEditTime=100 end end,
+    onThumbnail=function(c)
+      if warmed and case=="cancel" then c.cancel()
+      elseif warmed and case=="selection" then c.setUser()
+      elseif warmed and case=="module" then c.setModule("map") end
+    end,
+    thumbnail=function(p,w,h,callback)
+      if p.localIdentifier==3 then
+        warmed=true
+        p.settings.Temperature=case=="known_wb" and 4500 or 4400;p.settings.Tint=44
+        if case=="filter" or case=="combined" then p.settings.FilterList={} end
+        if case=="point_colors" or case=="combined" then
+          p.settings.Look={Name="Adobe Color",UUID="profile-a",Amount=1,Parameters={Version="18.5.1",ProcessVersion="15.4",PointColors={}}}
+        end
+        if case=="exposure" then p.settings.Exposure2012=1
+        elseif case=="profile" then p.settings.Look={Name="Camera Matching",UUID="profile-b"}
+        elseif case=="active_filter" then p.settings.FilterList={{Amount=1}}
+        elseif case=="active_point_colors" then p.settings.Look={Name="Adobe Color",UUID="profile-a",Amount=1,Parameters={Version="18.5.1",ProcessVersion="15.4",PointColors={{Hue=20}}}}
+        elseif case=="custom_wb" then p.settings.WhiteBalance="Custom"
+        elseif case=="edit_time" then p.lastEditTime=101 end
+      end
+      callback("jpeg")
+    end}
+  local safe=case=="wb" or case=="sentinel" or case=="partial" or case=="filter" or case=="point_colors" or case=="combined"
+  eq(r.summary.applied,safe and 4 or 2,case.." initialization preserves guarded write count")
+  eq(r.summary.unprocessed,safe and 0 or 2,case.." initialization preserves remaining count")
+  eq(r.photos[3].directWrites or 0,safe and 1 or 0,case.." cold RAW is written only after safe preparation")
+end
+
+-- RAW followers need their own warm-up even though only the rendered reference
+-- is analyzed. Cached previews may require a read-only Develop load.
+for _,case in ipairs({"follower", "develop_fallback", "develop_no_crop_tool", "develop_no_straighten", "never_ready", "late_edit"}) do
+  local requested=false
+  local r=run{sameNameMode="matchRendered",module="library",direct=true,noCropTool=case=="develop_no_crop_tool",
+    onGetValue=function(key,value)if case=="develop_no_straighten" and key=="straightenAngle" then return nil end;return value end,
+    options={photoDisplayMode="minimizeSwitching",adjustedPhotoAction="reset",tiltSource="imageAnalysis"},
+    photos={
+      {path="/dir/A.JPG",fileFormat="JPEG",settings={Exposure2012=0,CropAngle=0}},
+      {path="/dir/A.ARW",fileFormat="RAW",settings={Exposure2012=0,CropAngle=0,WhiteBalance="As Shot"}},
+    },
+    helper=function()return {kind="horizon",degrees=.37}end,
+    thumbnail=function(p,w,h,callback)
+      if p.fileFormat=="RAW" then
+        requested=true
+        if case=="follower" or case=="late_edit" then p.settings.Temperature=4400;p.settings.Tint=44 end
+      end
+      callback("jpeg")
+    end,
+    onGetDevelopSettings=function(p,c)
+      if p.fileFormat=="RAW" and requested then
+        if (case=="develop_fallback" or case=="develop_no_crop_tool" or case=="develop_no_straighten") and c.moduleName()=="develop" and c.activePhoto()==p then
+          p.settings.Temperature=4400;p.settings.Tint=44
+        elseif case=="late_edit" and (p.directWrites or 0)==0 then
+          p.settings.Exposure2012=1
+        end
+      end
+    end}
+  local completed=case=="follower" or case=="develop_fallback" or case=="develop_no_crop_tool" or case=="develop_no_straighten"
+  eq(r.summary.applied,completed and 2 or 1,case.." follower prepared before saving")
+  eq(r.photos[2].directWrites or 0,completed and 1 or 0,case.." follower write is guarded")
+  eq(r.helperCalls,1,case.." only the reference is analyzed")
+  eq(r.resets or 0,0,case.." preparation never resets a photo")
+  if case=="never_ready" then
+    eq(r.summary.fail,1,"unresolved RAW is reported, not adjusted")
+    ok(r.summary.details:find("settings_not_ready",1,true),"readiness failure is distinct from an edit")
+  end
 end
 
 print(string.format("passed=%d failed=%d", passed, failed))

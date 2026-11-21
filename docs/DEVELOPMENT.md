@@ -74,6 +74,19 @@ angle and its settings from a single unchanged catalog snapshot; when Develop is
 open, the Develop control is also checked against that angle. Keep these guards
 when changing how work is scheduled.
 
+RAW photos with unresolved As Shot white balance are prepared before the
+analysis baseline is fixed. A preview request, or a read-only Develop load when
+the preview is cached, lets Lightroom materialize those values. Preparation
+guards existing settings and the photo's edit time; analysis then requests a
+fresh preview and uses the normal strict comparison and save checks.
+
+Results open after the progress context exits and its asynchronous UI teardown
+has settled, on completion as well as cancellation and error paths. Keep the
+run lock through that handoff. Results keep five aligned columns, a fixed header,
+and all rows in one scrolling table. Details belong to their photo row; do not
+replace the table with flattened list titles or a separate selected-row panel.
+Validate large reports in Lightroom, including scrolling and closing the dialog.
+
 The current helper and checkpoint schemas are persisted contracts and are
 independent of the plug-in version. Keep schema checks, recovery records,
 camera-format readers and Lightroom normalization rules, even when removing
