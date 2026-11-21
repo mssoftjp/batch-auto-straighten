@@ -2,7 +2,7 @@
 
 This project follows [Semantic Versioning](https://semver.org/). User-visible changes are recorded here before a version tag is created.
 
-## 0.18.8 - Unreleased
+## 0.18.8 - 2026-11-22
 
 - Restore aligned Photo, Result, Angle, Method and Details columns in the results table, keeping all photos in one scroll area.
 - Remove the separate selected-photo details panel so each explanation stays with its photo.
